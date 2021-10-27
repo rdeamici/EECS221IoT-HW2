@@ -28,13 +28,14 @@ void setup() {
   pinMode(RedledPin, OUTPUT);
   pinMode(ldrPin, INPUT);
 
-  bool connected = false;
-
   // blink light for 2 seconds
   // while trying to connect to wifi
   WiFi.begin(SSID, PASSWORD); 
   Serial.print("Connecting to %s ");
   Serial.println(SSID);
+
+  bool connected = false;
+
   for(int i = 0; i < 10; i++) {
     digitalWrite(RedledPin,HIGH);
     delay(50);
@@ -51,7 +52,7 @@ void setup() {
       connected = true;
     }
   }
-  Serial.print("Ip address: ");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
   // ensure all lights are off
@@ -78,14 +79,14 @@ void loop() {
     int lightLvl = checkCurrentLightLevel();
 
     // convert int to char *
-    String msg2rpi = String(lightLvl);
+    String msg2rpi = String(lightLvl).c_str();
 
     // send data to the IP address of the RPi
     Serial.print("light level: ");
     Serial.println(lightLvl);
     Serial.println("Sending to rpi");
     Udp.beginPacket('192.168.0.16', RPiUdpPort); 
-    Udp.write(msg2rpi.c_str()); //convert msg to c-style char array
+    Udp.write(msg2rpi); //convert msg to c-style char array
     Udp.endPacket();
  
     // attempt to receive incoming UDP packet from rpi
@@ -100,6 +101,15 @@ void loop() {
         }
         Serial.println("UDP packet contents: ");
         Serial.println(incomingPacket);
+        
+        int light_to_turn_on = incomingPacket[0];
+        if (light_to_turn_on == 0) {
+          digitalWrite(GreenledPin,HIGH);
+          digitalWrite(BlueledPin,LOW);
+        } else {
+          digitalWrite(BlueledPin,HIGH);
+          digitalWrite(GreenledPin,LOW);
+        }
     }
     else {
         Serial.println("No UDP packet retrieved!");
