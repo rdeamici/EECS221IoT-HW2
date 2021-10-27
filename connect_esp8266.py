@@ -28,9 +28,6 @@ RPI_ADDRESS = '192.168.0.16'
 RPI_PORT = 4210
 RPiUDPServer = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-#port to receive data from ESP8266
-ESP_PORT = 4210
-
 
 def get_esp_data(timeout):
     '''
@@ -66,15 +63,18 @@ def wait_for_connection():
     for data sent via UDP connection
     '''
     esp_address = ''
-    onoff = [HIGH,LOW]
-    switch = 0
+    onoff = [LOW, HIGH]
+    switch = True
+
     while not esp_address:
         GPIO.output(RED,onoff[switch])
         start_time = time.time()
-        _, esp_address = get_esp_data(timeout=0.48)
+        _ , esp_address = get_esp_data(timeout=0.48)
         time_to_sleep = slow_blink_time_to_sleep(start_time)
         time.time(time_to_sleep)
-        switch = 0 if switch == 1 else 1
+        switch = not switch
+
+    GPIO.output(RED,LOW) # ensure light is off
 
     return esp_address
 
@@ -88,7 +88,7 @@ def main():
     while True:
         if timed_out:
             # step 1: flash light slowly while waiting for data from esp8266
-            _, esp_address = wait_for_connection()
+            _ , esp_address = wait_for_connection()
 
             # step 2: flash light quickly for 2 seconds
             for _ in range(10):
@@ -97,9 +97,11 @@ def main():
                 GPIO.output(RED,LOW)
                 time.sleep(0.1)
 
+        timed_out = False
         # step 3: get values from esp and from rgb sensor
         both_sensors_data = get_8_sensor_readings(timeout=10)
-        # if the server ever waits more than 2 minutes for a
+
+        # if the server ever waits more than 10 seconds for a
         # reading from the esp, then revert back to step 1
         if not both_sensors_data:
             timed_out = True
