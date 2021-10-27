@@ -74,8 +74,6 @@ def wait_for_connection():
         time.time(time_to_sleep)
         switch = not switch
 
-    GPIO.output(RED,LOW) # ensure light is off
-
     return esp_address
 
 
@@ -83,7 +81,8 @@ def main():
     '''
     main function
     '''
-    lights = [GREEN,BLUE]
+    #           ESP, RPI
+    lights = [GREEN, BLUE]
     timed_out = True # 2 minute timeout
     while True:
         if timed_out:
@@ -92,9 +91,9 @@ def main():
 
             # step 2: flash light quickly for 2 seconds
             for _ in range(10):
-                GPIO.output(RED,HIGH)
-                time.sleep(0.1)
                 GPIO.output(RED,LOW)
+                time.sleep(0.1)
+                GPIO.output(RED,HIGH) # ensures red light will be left on
                 time.sleep(0.1)
 
         timed_out = False
@@ -120,8 +119,8 @@ def main():
 def find_brighter_light(both_sensors_data):
     '''
     Get avg of all sensor readings for both sensors.
-    If esp has a higher average, return 0.
-    If rgb has higher average, return 1.
+    If esp has a higher average, return False(0).
+    If rgb has higher average, return True(1).
     '''
     esp_avg, rgb_avg = 0,0
 
@@ -134,8 +133,13 @@ def find_brighter_light(both_sensors_data):
 
     return esp_avg < rgb_avg
 
+
 def convert_bytes_to_int(esp_data):
-    return 
+    '''
+    converts byte string to an integer
+    '''
+    return int.from_bytes(esp_data,'big')
+
 
 def get_8_sensor_readings(timeout):
     '''
