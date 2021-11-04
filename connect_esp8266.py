@@ -24,9 +24,13 @@ RGB_SENSOR = adafruit_tcs34725.TCS34725(board.I2C())
 
 
 # setup UDP server on RPi
-RPI_ADDRESS = '192.168.0.16'
+RPI_ADDRESS = '192.168.220.8'
 RPI_PORT = 4210
 RPiUDPServer = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+
+# base line light level for both sensors
+PHOTO_RESISTOR_BASELINE = 0
+RGB_SENSOR_BASELINE = 0
 
 
 def get_esp_data(timeout):
@@ -39,8 +43,11 @@ def get_esp_data(timeout):
     try:
         esp_data, esp_address = RPiUDPServer.recvfrom(255)
     except socket.timeout:
+        print("socket timed out!")
         esp_data, esp_address = '',''
-
+    except KeyboardInterrupt:
+        raise
+    
     return esp_data, esp_address
 
 
@@ -49,10 +56,10 @@ def slow_blink_time_to_sleep(start):
     ensure led stays in current state for at least half a second
     '''
     end = time.time()
-    time_to_sleep = 0.5 - (end - start)
+    time_to_sleep = 1 - (end - start)
 
     if time_to_sleep < 0:
-        raise ValueError("Took more than half a sec ({})  to check connection".format(end-start))
+        raise ValueError("Took more than a second ({})  to check connection".format(end-start))
 
     return time_to_sleep
 
@@ -69,12 +76,15 @@ def wait_for_connection():
     while not esp_address:
         GPIO.output(RED,onoff[switch])
         start_time = time.time()
-        _ , esp_address = get_esp_data(timeout=0.48)
+        esp_data , esp_address = get_esp_data(timeout=0.9)
         time_to_sleep = slow_blink_time_to_sleep(start_time)
-        time.time(time_to_sleep)
+        time.sleep(time_to_sleep)
         switch = not switch
 
-    return esp_address
+    print(esp_address)
+    return esp_data, esp_address
+
+
 
 
 def main():
@@ -84,37 +94,57 @@ def main():
     #           ESP, RPI
     lights = [GREEN, BLUE]
     timed_out = True # 2 minute timeout
-    while True:
-        if timed_out:
-            # step 1: flash light slowly while waiting for data from esp8266
-            _ , esp_address = wait_for_connection()
+    try:
+        while True:
+            if timed_out:
+                # step 1: flash light slowly while waiting for data from esp8266
+                _ , (esp_address,esp_port) = wait_for_connection()
+                # step 2: flash light quickly for 2 seconds
+                for _ in range(10):
+                    GPIO.output(RED,LOW)
+                    time.sleep(0.1)
+                    GPIO.output(RED,HIGH) # ensures red light will be left on
+                    time.sleep(0.1)
+                
+            timed_out = False
+            # step 3: get values from esp and from rgb sensor
+            both_sensors_data = get_8_sensor_readings(timeout=2)
 
-            # step 2: flash light quickly for 2 seconds
-            for _ in range(10):
+            # if the server ever waits more than 10 seconds for a
+            # reading from the esp, then revert back to step 1
+            if not both_sensors_data:
+                timed_out = True
                 GPIO.output(RED,LOW)
-                time.sleep(0.1)
-                GPIO.output(RED,HIGH) # ensures red light will be left on
-                time.sleep(0.1)
+                GPIO.output(GREEN,LOW)
+                GPIO.output(BLUE,LOW)
+            else:
+                light = find_brighter_light(both_sensors_data)
+                high_light = lights[light]
+                low_light = lights[not light]
 
-        timed_out = False
-        # step 3: get values from esp and from rgb sensor
-        both_sensors_data = get_8_sensor_readings(timeout=10)
+                GPIO.output(high_light, HIGH)
+                GPIO.output(low_light,LOW)
 
-        # if the server ever waits more than 10 seconds for a
-        # reading from the esp, then revert back to step 1
-        if not both_sensors_data:
-            timed_out = True
-        else:
-            light = find_brighter_light(both_sensors_data)
-            high_light = lights[light]
-            low_light = lights[not light]
+                return_data = int.to_bytes(light,1,'big')
+                RPiUDPServer.sendto(return_data,(esp_address,esp_port))
+    except Exception as e:
+        print(e)
+        print("\nturning off all lights...")
+        GPIO.output(RED,LOW)
+        GPIO.output(GREEN,LOW)
+        GPIO.output(BLUE,LOW)
+        print("Done! cleaning up GPIO...")
+        GPIO.cleanup()
+        print("Done!")
+        return
 
-            GPIO.output(high_light, HIGH)
-            GPIO.output(low_light,LOW)
 
-            return_data = int.to_bytes(light,1,'big')
-            RPiUDPServer.sendto(return_data,esp_address)
+def set_baselines(both_sensors_data):
+    total_data_points = len(both_sensors_data)
+    photo_resistor_avg = sum([d[0] for d in both_sensors_data])/total_data_points
+    rgb_sensor_avg = sum([d[1] for d in both_sensors_data])/total_data_points
 
+    return photo_resistor_avg,rgb_sensor_avg
 
 def find_brighter_light(both_sensors_data):
     '''
@@ -134,12 +164,6 @@ def find_brighter_light(both_sensors_data):
     return esp_avg < rgb_avg
 
 
-def convert_bytes_to_int(esp_data):
-    '''
-    converts byte string to an integer
-    '''
-    return int.from_bytes(esp_data,'big')
-
 
 def get_8_sensor_readings(timeout):
     '''
@@ -149,12 +173,12 @@ def get_8_sensor_readings(timeout):
     while len(both_sensors_data) < 8:
         esp_data, _ = get_esp_data(timeout)
         if esp_data:
-            esp_data = convert_bytes_to_int(esp_data)
+            esp_data = int(esp_data)
             rgb_data = RGB_SENSOR.lux
             both_sensors_data.append((esp_data,rgb_data))
         else:
             return []
-
+        print(both_sensors_data)
     return both_sensors_data
 
 if __name__ == "__main__":

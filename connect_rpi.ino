@@ -1,9 +1,12 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
-// Trinh's wifi info
-const char* SSID = "SETUP-564E-2.4"; 
-const char* PASSWORD = "butler15"; 
+// wifi info
+const char* SSID = "OnePlusHotSpot"; 
+const char* PASSWORD = "Ucl4r00lz!"; 
+
+// raspberry pi IP address
+String RPi_address = "192.168.220.8"
 
 unsigned int ESPUdpPort = 4210; // local port to listen on
 unsigned int RPiUdpPort = 4210; // port to send info to rpi
@@ -60,7 +63,7 @@ void setup() {
   digitalWrite(GreenledPin,LOW);
   digitalWrite(BlueledPin,LOW);
 
-  // setup server
+  // setup client
   Udp.begin(ESPUdpPort); 
   Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), ESPUdpPort); 
   digitalWrite(RedledPin, HIGH);
@@ -85,7 +88,7 @@ void loop() {
     Serial.print("light level: ");
     Serial.println(lightLvl);
     Serial.println("Sending to rpi");
-    Udp.beginPacket('192.168.0.16', RPiUdpPort); 
+    Udp.beginPacket(RPi_address, RPiUdpPort); 
     Udp.write(msg2rpi); //convert msg to c-style char array
     Udp.endPacket();
  
