@@ -1,18 +1,22 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
-// wifi info
+// Trinh's wifi info
+//const char* SSID = "SETUP-564E-2.4"; 
+//const char* PASSWORD = "butler15"; 
+
+// My cell phone hotspot
 const char* SSID = "OnePlusHotSpot"; 
 const char* PASSWORD = "Ucl4r00lz!"; 
 
-// raspberry pi IP address
-String RPi_address = "192.168.220.8"
+// rpis address on OnePlus hotspot
+char* rpi_address = "192.168.220.8";
 
 unsigned int ESPUdpPort = 4210; // local port to listen on
 unsigned int RPiUdpPort = 4210; // port to send info to rpi
 
-char incomingPacket[UDP_TX_PACKET_MAX_SIZE + 1]; // buffer for incoming packets
-char replyPacket[] = "Hi there! Got the message :-)";
+char incomingPacket[255]; // buffer for incoming packets
+String replyPacket;
 
 WiFiUDP Udp; 
 
@@ -63,7 +67,7 @@ void setup() {
   digitalWrite(GreenledPin,LOW);
   digitalWrite(BlueledPin,LOW);
 
-  // setup client
+  // setup server
   Udp.begin(ESPUdpPort); 
   Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), ESPUdpPort); 
   digitalWrite(RedledPin, HIGH);
@@ -82,14 +86,14 @@ void loop() {
     int lightLvl = checkCurrentLightLevel();
 
     // convert int to char *
-    String msg2rpi = String(lightLvl).c_str();
+    replyPacket = String(lightLvl);
 
     // send data to the IP address of the RPi
     Serial.print("light level: ");
     Serial.println(lightLvl);
     Serial.println("Sending to rpi");
-    Udp.beginPacket(RPi_address, RPiUdpPort); 
-    Udp.write(msg2rpi); //convert msg to c-style char array
+    Udp.beginPacket(rpi_address, RPiUdpPort); 
+    Udp.write(replyPacket.c_str()); //convert msg to c-style char array
     Udp.endPacket();
  
     // attempt to receive incoming UDP packet from rpi
