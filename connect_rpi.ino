@@ -26,6 +26,9 @@ const int GreenledPin = D1;
 const int RedledPin = D2;
 const int ldrPin = A0;
 
+// keep track of total time
+// 1000 ms = 1 second * 60 = 1min * 2 = 2 min
+int total_time = 1000*60*2;
 
 void setup() {
   Serial.begin(115200);
@@ -76,50 +79,58 @@ void setup() {
 
 int checkCurrentLightLevel() {
     int ldrStatus = analogRead(ldrPin);  //read the state of the LDR value
-    delay(250);
     return ldrStatus;
 }
 
 
 void loop() {
-    // read sensor (0.25 seconds)
-    int lightLvl = checkCurrentLightLevel();
+    if (total_time > 0) {
+      // read sensor (0.25 seconds)
+      int lightLvl = checkCurrentLightLevel();
+      delay(250);
+      // convert int to char *
+      replyPacket = String(lightLvl);
 
-    // convert int to char *
-    replyPacket = String(lightLvl);
+      // send data to the IP address of the RPi
+      Serial.print("light level: ");
+      Serial.println(lightLvl);
+      Serial.println("Sending to rpi");
+      Udp.beginPacket(rpi_address, RPiUdpPort); 
+      Udp.write(replyPacket.c_str()); //convert msg to c-style char array
+      Udp.endPacket();
+  
+      // attempt to receive incoming UDP packet from rpi
+      int packetSize = Udp.parsePacket(); 
+      if(packetSize) { 
+          Serial.printf("Received %d bytes from %s, port %d\n", packetSize, 
+              Udp.remoteIP().toString().c_str(), Udp.remotePort()); 
 
-    // send data to the IP address of the RPi
-    Serial.print("light level: ");
-    Serial.println(lightLvl);
-    Serial.println("Sending to rpi");
-    Udp.beginPacket(rpi_address, RPiUdpPort); 
-    Udp.write(replyPacket.c_str()); //convert msg to c-style char array
-    Udp.endPacket();
- 
-    // attempt to receive incoming UDP packet from rpi
-    int packetSize = Udp.parsePacket(); 
-    if(packetSize) { 
-        Serial.printf("Received %d bytes from %s, port %d\n", packetSize, 
-            Udp.remoteIP().toString().c_str(), Udp.remotePort()); 
+          int len = Udp.read(incomingPacket, 255); 
+          if(len > 0) { 
+              incomingPacket[len] = '\0';
+          }
+          Serial.println("UDP packet contents: ");
+          Serial.println(incomingPacket);
 
-        int len = Udp.read(incomingPacket, 255); 
-        if(len > 0) { 
-            incomingPacket[len] = '\0';
-        }
-        Serial.println("UDP packet contents: ");
-        Serial.println(incomingPacket);
-        
-        int light_to_turn_on = incomingPacket[0];
-        if (light_to_turn_on == 0) {
-          digitalWrite(GreenledPin,HIGH);
-          digitalWrite(BlueledPin,LOW);
-        } else {
-          digitalWrite(BlueledPin,HIGH);
-          digitalWrite(GreenledPin,LOW);
-        }
+          int light_to_turn_on = incomingPacket[0];
+          if (light_to_turn_on == 0) {
+            Serial.println("Turning on Green light");
+            digitalWrite(GreenledPin,HIGH);
+            digitalWrite(BlueledPin,LOW);
+          } else {
+            Serial.println("Turning on Blue light");
+            digitalWrite(BlueledPin,HIGH);
+            digitalWrite(GreenledPin,LOW);
+          }
+      }
+      else {
+          Serial.println("No UDP packet retrieved!");
+      }
     }
-    else {
-        Serial.println("No UDP packet retrieved!");
+    total_time = total_time - 250;
+    if (total_time <= 0) {
+       digitalWrite(RedledPin,LOW);
+       digitalWrite(GreenledPin,LOW);
+       digitalWrite(BlueledPin,LOW);
     }
-    delay(1000);
 }
